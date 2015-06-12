@@ -5,7 +5,6 @@ import (
 	"log"
 	"math"
 	"net"
-	"sync"
 )
 
 type Client struct {
@@ -13,7 +12,8 @@ type Client struct {
 	numClients  uint8
 	current     uint8
 	max         uint8
-	mutex       *sync.Mutex
+	wChan       chan []byte
+	quitChan    chan bool
 }
 
 func NewClient(servers []string) *Client {
@@ -32,17 +32,34 @@ func NewClient(servers []string) *Client {
 
 	}
 	numClients := uint8(len(connections))
-	return &Client{
+	client := &Client{
 		connections: connections,
 		numClients:  numClients,
 		max:         math.MaxUint8 / numClients * numClients,
-		mutex:       &sync.Mutex{},
+		wChan:       make(chan []byte),
+		quitChan:    make(chan bool),
 	}
+
+	go func(c *Client) {
+		for {
+			select {
+			case payload := <-c.wChan:
+				c.write(payload)
+			case <-c.quitChan:
+				c.close()
+				return
+			}
+		}
+	}(client)
+
+	return client
 }
 
 func (c *Client) Write(payload []byte) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.wChan <- payload
+}
+
+func (c *Client) write(payload []byte) {
 	conn := c.nexConnection()
 
 	payloadLen := make([]byte, binary.MaxVarintLen32)
@@ -50,12 +67,15 @@ func (c *Client) Write(payload []byte) {
 
 	conn.Write(payloadLen[:numBytes])
 	conn.Write(payload)
-	//log.Printf("Wiring %d bytes to connection %s<->%s", len(payload), conn.LocalAddr(), conn.RemoteAddr())
 }
 
 func (c *Client) Close() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.quitChan <- true
+}
+
+func (c *Client) close() {
+	close(c.wChan)
+	close(c.quitChan)
 	for _, conn := range c.connections {
 		conn.Close()
 	}
