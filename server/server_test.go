@@ -8,6 +8,7 @@ import (
 	"net"
 
 	"github.com/netbrain/dlog/log"
+	"github.com/netbrain/dlog/scanner_util"
 
 	"testing"
 )
@@ -34,7 +35,7 @@ func TestScanner(t *testing.T) {
 	buffer.Write(payload)
 
 	scanner := bufio.NewScanner(buffer)
-	scanner.Split(scanPayloadSplitFunc)
+	scanner.Split(scanner_util.ScanPayloadSplitFunc)
 
 	for scanner.Scan() {
 		bytes := scanner.Bytes()
