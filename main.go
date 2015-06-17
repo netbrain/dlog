@@ -27,9 +27,10 @@ func main() {
 		log.Fatal(err)
 	}
 	logwriter := dlog.NewWriter(file)
+	logreader := dlog.NewReader(file)
 	defer file.Close()
 	defer logwriter.Close()
 
-	s := server.NewServer(logwriter, port)
+	s := server.NewServer(logwriter, logreader, port)
 	s.Start()
 }

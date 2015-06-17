@@ -20,12 +20,33 @@ func TestCanWriteAndReadEntry(t *testing.T) {
 	lw.Close()
 
 	lr := NewReader(buf)
-	entry, err := lr.ReadEntry()
-	if err != nil {
-		t.Fatal(err)
-	}
+	entry := <-lr.Read()
+
 	if !reflect.DeepEqual(entry.GetPayload(), payload) {
 		t.Fatalf("%v !=  %v", entry.GetPayload(), payload)
+	}
+}
+
+func TestCanReadEntries(t *testing.T) {
+	payload := []byte{1, 2, 3}
+	buf := &bytes.Buffer{}
+	lw := NewWriter(buf)
+	for x := 0; x < 10; x++ {
+		lw.Write(payload)
+	}
+
+	lr := NewReader(buf)
+	c := lr.Read()
+	numElems := 0
+	for entry := range c {
+		numElems++
+		if !reflect.DeepEqual(entry.GetPayload(), payload) {
+			t.Fatalf("Not equal, %v != %v", entry.GetPayload(), payload)
+		}
+	}
+
+	if numElems != 10 {
+		t.Fatalf("expected 10 entries but got %d", numElems)
 	}
 
 }
@@ -44,13 +65,12 @@ func BenchmarkReadFromFile(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		lw.Write(payload)
 	}
-	lw.Close()
 
 	b.StopTimer()
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		lr.ReadEntry()
+		<-lr.Read()
 	}
 
 }

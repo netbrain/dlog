@@ -1,5 +1,0 @@
-//protoc --go_out=. entry.proto
-message Entry {
-  required sfixed64 timestamp = 1;
-  required bytes payload = 2;
-}

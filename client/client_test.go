@@ -3,9 +3,9 @@ package client
 import (
 	"bytes"
 	"log"
-	"reflect"
+	"os"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/netbrain/dlog/log"
 	"github.com/netbrain/dlog/server"
@@ -14,18 +14,27 @@ import (
 type serverTest struct {
 	buffer    *bytes.Buffer
 	logWriter *dlog.LogWriter
+	logReader *dlog.LogReader
 	server    *server.Server
+}
+
+func TestMain(m *testing.M) {
+	log.SetFlags(log.Flags() | log.Lshortfile)
+	i := m.Run()
+	os.Exit(i)
 }
 
 func createAndStartServer() *serverTest {
 	buffer := &bytes.Buffer{}
 	lw := dlog.NewWriter(buffer)
-	server := server.NewServer(lw, 0)
+	lr := dlog.NewReader(buffer)
+	server := server.NewServer(lw, lr, 0)
 
 	s := &serverTest{
 		server:    server,
 		buffer:    buffer,
 		logWriter: lw,
+		logReader: lr,
 	}
 	go s.server.Start()
 	log.Printf("Starting TCP server @ %v", s.server.Address())
@@ -33,9 +42,9 @@ func createAndStartServer() *serverTest {
 }
 
 func TestClientCanWriteToServer(t *testing.T) {
-	log.SetFlags(log.Flags() | log.Lshortfile)
+	numClients := 4
+	numServers := 1
 
-	numServers := 2
 	addresses := make([]string, numServers)
 	servers := make([]*serverTest, numServers)
 	for x := 0; x < numServers; x++ {
@@ -43,38 +52,31 @@ func TestClientCanWriteToServer(t *testing.T) {
 		servers[x] = s
 		addresses[x] = s.server.Address().String()
 	}
-	client1 := NewClient(addresses)
 
-	client1.Write([]byte{0})
-	client1.Write([]byte{1})
-	client1.Write([]byte{2})
-	client1.Write([]byte{3})
-	client1.Close()
-
-	expected := make(map[int][][]byte)
-	expected[0] = [][]byte{
-		[]byte{0},
-		[]byte{2},
-	}
-	expected[1] = [][]byte{
-		[]byte{1},
-		[]byte{3},
-	}
-
-	time.Sleep(200 * time.Millisecond)
-	for i, s := range servers {
-		s.logWriter.Close()
-		s.server.Stop()
-		lr := dlog.NewReader(s.buffer)
-		entry, _ := lr.ReadEntry()
-		if !reflect.DeepEqual(entry.GetPayload(), expected[i][0]) {
-			t.Fatalf("%v != %v", entry.GetPayload(), expected[i][0])
+	readChan := make(chan byte)
+	go func() {
+		defer close(readChan)
+		for x := 1; x <= 100; x++ {
+			readChan <- byte(x)
 		}
+	}()
+	wg := &sync.WaitGroup{}
+	for x := 0; x < numClients; x++ {
+		wg.Add(1)
+		client := NewClient(addresses)
+		go func(client *Client) {
+			defer client.Close()
+			defer wg.Done()
+			for b := range readChan {
+				client.write([]byte{b})
+			}
+		}(client)
+	}
+	wg.Wait()
 
-		entry, _ = lr.ReadEntry()
-		if !reflect.DeepEqual(entry.GetPayload(), expected[i][1]) {
-			t.Fatalf("%v != %v", entry.GetPayload(), expected[i][1])
-		}
+	readClient := NewClient(addresses)
+	for data := range readClient.Replay() {
+		log.Println(data)
 	}
 
 }

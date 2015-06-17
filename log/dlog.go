@@ -10,67 +10,67 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	"github.com/netbrain/dlog/log/entry"
-	"github.com/netbrain/dlog/scanner_util"
+	"github.com/netbrain/dlog/api"
+	"github.com/netbrain/dlog/payload"
 )
 
 type LogWriter struct {
-	wChan      chan *entry.Entry
-	writer     io.Writer
-	gzipWriter *gzip.Writer
+	wChan chan *api.LogEntry
 }
 
 type LogReader struct {
-	reader     io.Reader
-	gzipReader *gzip.Reader
-	scanner    *bufio.Scanner
+	reader io.Reader
 }
 
 func NewWriter(w io.Writer) *LogWriter {
-	gw := gzip.NewWriter(w)
 	l := &LogWriter{
-		wChan:      make(chan *entry.Entry),
-		writer:     w,
-		gzipWriter: gw,
+		wChan: make(chan *api.LogEntry),
 	}
 
-	go func(r <-chan *entry.Entry, w io.Writer) {
-		for entry := range r {
-			if entry == nil {
-				log.Println("Cannot write nil value")
-				continue
-			}
-			payload, err := proto.Marshal(entry)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			payloadLenBuf := make([]byte, binary.MaxVarintLen32)
-			payloadLen := uint64(len(payload))
-			numBytes := binary.PutUvarint(payloadLenBuf, payloadLen)
-
-			w.Write(payloadLenBuf[:numBytes])
-			w.Write(payload)
-
-		}
-	}(l.wChan, l.gzipWriter)
+	go l.writeRoutine(w)
 
 	return l
 }
 
-func NewReader(r io.Reader) *LogReader {
-	gzReader, err := gzip.NewReader(r)
-	if err != nil {
-		panic(err)
+func (l *LogWriter) writeRoutine(w io.Writer) {
+	gw := gzip.NewWriter(w)
+
+	for entry := range l.wChan {
+		l.writeEntry(gw, entry)
 	}
 
-	scanner := bufio.NewScanner(gzReader)
-	scanner.Split(scanner_util.ScanPayloadSplitFunc)
+	if err := gw.Close(); err != nil {
+		log.Fatal(err)
+	}
 
+	if wc, ok := w.(io.Closer); ok {
+		if err := wc.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func (l *LogWriter) writeEntry(w *gzip.Writer, entry *api.LogEntry) {
+	if entry == nil {
+		log.Println("Cannot write nil value")
+		return
+	}
+	payload, err := proto.Marshal(entry)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	payloadLenBuf := make([]byte, binary.MaxVarintLen32)
+	payloadLen := uint64(len(payload))
+	numBytes := binary.PutUvarint(payloadLenBuf, payloadLen)
+
+	_, err = w.Write(append(payloadLenBuf[:numBytes], payload...))
+	w.Flush()
+}
+
+func NewReader(r io.Reader) *LogReader {
 	logReader := &LogReader{
-		reader:     r,
-		gzipReader: gzReader,
-		scanner:    scanner,
+		reader: r,
 	}
 	return logReader
 
@@ -78,7 +78,7 @@ func NewReader(r io.Reader) *LogReader {
 
 func (l *LogWriter) Write(payload []byte) (int, error) {
 	timestamp := time.Now().UnixNano()
-	l.wChan <- &entry.Entry{
+	l.wChan <- &api.LogEntry{
 		Timestamp: &timestamp,
 		Payload:   payload,
 	}
@@ -86,27 +86,44 @@ func (l *LogWriter) Write(payload []byte) (int, error) {
 }
 
 func (l *LogWriter) Close() error {
-	defer close(l.wChan)
-	if err := l.gzipWriter.Close(); err != nil {
-		return err
-	}
-
-	if wc, ok := l.writer.(io.WriteCloser); ok {
-		if err := wc.Close(); err != nil {
-			return err
-		}
-	}
-
+	close(l.wChan)
 	return nil
 }
 
-func (l *LogReader) ReadEntry() (*entry.Entry, error) {
-	var err error
-	for l.scanner.Scan() {
-		entry := &entry.Entry{}
-		err = proto.Unmarshal(l.scanner.Bytes(), entry)
-		return entry, err
+func (l *LogReader) Read() <-chan *api.LogEntry {
+	c := make(chan *api.LogEntry)
+	if seeker, ok := l.reader.(io.Seeker); ok {
+		seeker.Seek(0, 0)
 	}
 
-	return nil, l.scanner.Err()
+	gzReader, err := gzip.NewReader(l.reader)
+	if err == io.EOF {
+		close(c)
+		return c
+	} else if err != nil {
+		log.Fatal(err)
+	}
+
+	scanner := bufio.NewScanner(gzReader)
+	scanner.Split(payload.ScanPayloadSplitFunc)
+
+	go func(c chan<- *api.LogEntry, scanner *bufio.Scanner) {
+		defer close(c)
+		defer gzReader.Close()
+		for scanner.Scan() {
+			entry := &api.LogEntry{}
+			err := proto.Unmarshal(scanner.Bytes(), entry)
+			if err != nil {
+				log.Fatal(err)
+			}
+			c <- entry
+		}
+		err := scanner.Err()
+		if err == io.ErrUnexpectedEOF {
+			log.Println("Unexpected EOF: might occur when writer is open")
+		} else if err != nil {
+			log.Fatal(err)
+		}
+	}(c, scanner)
+	return c
 }
