@@ -20,6 +20,7 @@ message ClientWriteRequest {
 		optional ClientWriteRequest request = 100;
 	}
 	required bytes payload = 1;
+	required sfixed64 count = 2;
 }
 
 // ClientReplayRequest is a message to the server to replay the log
@@ -60,6 +61,8 @@ message ServerReplayResponse {
 
 // LogEntry is a single entry in the log
 message LogEntry {
-  required sfixed64 timestamp = 1;
-  required bytes payload = 2;
+  //TODO remove clientId? not used
+  required sfixed64 clientId = 1;
+  required sfixed64 clientCount = 2;
+  required bytes payload = 3;
 }

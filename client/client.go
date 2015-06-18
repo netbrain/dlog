@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/golang/protobuf/proto"
 
@@ -22,12 +23,13 @@ type Client struct {
 	max         uint8
 	wChan       chan []byte
 	quitChan    chan bool
+	msgCount    int64
 }
 
 func NewClient(servers []string) *Client {
 	connections := make([]net.Conn, len(servers))
 	for i, s := range servers {
-		log.Printf("Connecting to server @ %s", s)
+		//log.Printf("Connecting to server @ %s", s)
 		conn, err := net.Dial("tcp", s)
 		if err != nil {
 			log.Fatalf("err connecting to '%s': %s", s, err)
@@ -69,11 +71,13 @@ func (c *Client) Write(data []byte) {
 }
 
 func (c *Client) write(data []byte) error {
+	msgCount := atomic.AddInt64(&c.msgCount, 1)
 	writeRequest := &api.ClientRequest{
 		Type: api.ClientRequest_WriteRequest.Enum(),
 	}
 	err := proto.SetExtension(writeRequest, api.E_ClientWriteRequest_Request, &api.ClientWriteRequest{
 		Payload: data,
+		Count:   &msgCount,
 	})
 	if err != nil {
 		panic(err)
@@ -249,7 +253,7 @@ func (r *replayStreams) next() (*api.LogEntry, error) {
 			continue
 		} else if entryIndex == -1 {
 			entryIndex = i
-		} else if e.GetTimestamp() < r.entries[entryIndex].GetTimestamp() {
+		} else if e.GetClientCount() < r.entries[entryIndex].GetClientCount() {
 			entryIndex = i
 		}
 	}

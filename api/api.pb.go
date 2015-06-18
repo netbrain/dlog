@@ -158,6 +158,7 @@ func (m *ClientRequest) GetType() ClientRequest_Type {
 // this message payload
 type ClientWriteRequest struct {
 	Payload          []byte `protobuf:"bytes,1,req,name=payload" json:"payload,omitempty"`
+	Count            *int64 `protobuf:"fixed64,2,req,name=count" json:"count,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
 
@@ -170,6 +171,13 @@ func (m *ClientWriteRequest) GetPayload() []byte {
 		return m.Payload
 	}
 	return nil
+}
+
+func (m *ClientWriteRequest) GetCount() int64 {
+	if m != nil && m.Count != nil {
+		return *m.Count
+	}
+	return 0
 }
 
 var E_ClientWriteRequest_Request = &proto.ExtensionDesc{
@@ -276,8 +284,9 @@ var E_ServerReplayResponse_Response = &proto.ExtensionDesc{
 
 // LogEntry is a single entry in the log
 type LogEntry struct {
-	Timestamp        *int64 `protobuf:"fixed64,1,req,name=timestamp" json:"timestamp,omitempty"`
-	Payload          []byte `protobuf:"bytes,2,req,name=payload" json:"payload,omitempty"`
+	ClientId         *int64 `protobuf:"fixed64,1,req,name=clientId" json:"clientId,omitempty"`
+	ClientCount      *int64 `protobuf:"fixed64,2,req,name=clientCount" json:"clientCount,omitempty"`
+	Payload          []byte `protobuf:"bytes,3,req,name=payload" json:"payload,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
 
@@ -285,9 +294,16 @@ func (m *LogEntry) Reset()         { *m = LogEntry{} }
 func (m *LogEntry) String() string { return proto.CompactTextString(m) }
 func (*LogEntry) ProtoMessage()    {}
 
-func (m *LogEntry) GetTimestamp() int64 {
-	if m != nil && m.Timestamp != nil {
-		return *m.Timestamp
+func (m *LogEntry) GetClientId() int64 {
+	if m != nil && m.ClientId != nil {
+		return *m.ClientId
+	}
+	return 0
+}
+
+func (m *LogEntry) GetClientCount() int64 {
+	if m != nil && m.ClientCount != nil {
+		return *m.ClientCount
 	}
 	return 0
 }

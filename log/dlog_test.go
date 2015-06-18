@@ -16,7 +16,7 @@ func TestCanWriteAndReadEntry(t *testing.T) {
 	payload := []byte{1, 2, 3}
 	buf := &bytes.Buffer{}
 	lw := NewWriter(buf)
-	lw.Write(payload)
+	lw.Write(0, 0, payload)
 	lw.Close()
 
 	lr := NewReader(buf)
@@ -32,7 +32,7 @@ func TestCanReadEntries(t *testing.T) {
 	buf := &bytes.Buffer{}
 	lw := NewWriter(buf)
 	for x := 0; x < 10; x++ {
-		lw.Write(payload)
+		lw.Write(0, int64(x), payload)
 	}
 
 	lr := NewReader(buf)
@@ -63,7 +63,7 @@ func BenchmarkReadFromFile(b *testing.B) {
 	fmt.Println(file.Name())
 
 	for i := 0; i < b.N; i++ {
-		lw.Write(payload)
+		lw.Write(0, int64(i), payload)
 	}
 
 	b.StopTimer()
@@ -88,7 +88,7 @@ func BenchmarkWriteToFile(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		lw.Write(payload)
+		lw.Write(0, int64(i), payload)
 	}
 
 }
@@ -107,7 +107,7 @@ func BenchmarkWriteToGZFileDefault(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		lw.Write(payload)
+		lw.Write(0, int64(i), payload)
 	}
 
 }
@@ -126,7 +126,7 @@ func BenchmarkWriteToGZFileNone(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		lw.Write(payload)
+		lw.Write(0, int64(i), payload)
 	}
 
 }
@@ -145,7 +145,7 @@ func BenchmarkWriteToGZFileBestSpeed(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		lw.Write(payload)
+		lw.Write(0, int64(i), payload)
 	}
 
 }
@@ -164,7 +164,7 @@ func BenchmarkWriteToGZFileBestCompression(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		lw.Write(payload)
+		lw.Write(0, int64(i), payload)
 	}
 
 }

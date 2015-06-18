@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync/atomic"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/netbrain/dlog/api"
@@ -13,12 +15,15 @@ import (
 	"github.com/netbrain/dlog/log"
 )
 
+var counter uint32
+
 type Server struct {
 	listener  net.Listener
 	logWriter *dlog.LogWriter
 	logReader *dlog.LogReader
 	closed    bool
 	port      int
+	id        uint32
 }
 
 func NewServer(logWriter *dlog.LogWriter, logReader *dlog.LogReader, port int) *Server {
@@ -26,6 +31,7 @@ func NewServer(logWriter *dlog.LogWriter, logReader *dlog.LogReader, port int) *
 		logWriter: logWriter,
 		logReader: logReader,
 		port:      port,
+		id:        atomic.AddUint32(&counter, 1),
 	}
 	l, e := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if e != nil {
@@ -41,12 +47,12 @@ func (s *Server) Start() {
 }
 
 func (s *Server) listen() {
-	log.Printf("Listening on %s", s.listener.Addr())
+	//log.Printf("Listening on %s", s.listener.Addr())
 	for {
 		conn, err := s.listener.Accept()
 
 		if s.closed {
-			log.Println("Server closed")
+			//log.Println("Server closed")
 			break
 		}
 
@@ -54,7 +60,7 @@ func (s *Server) listen() {
 			log.Fatal(err)
 		}
 
-		log.Printf("Accepted connection from %v", conn.RemoteAddr())
+		//log.Printf("Accepted connection from %v", conn.RemoteAddr())
 		if err != nil {
 			log.Fatalf("Error when accepting connection: %s", err)
 		}
@@ -64,6 +70,7 @@ func (s *Server) listen() {
 
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
+	clientId := time.Now().UnixNano()
 	scanner := bufio.NewScanner(conn)
 	scanner.Split(payload.ScanPayloadSplitFunc)
 
@@ -83,7 +90,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 				log.Fatal(err)
 			}
 			writeRequest := rawRequest.(*api.ClientWriteRequest)
-			s.logWriter.Write(writeRequest.GetPayload())
+			s.logWriter.Write(clientId, writeRequest.GetCount(), writeRequest.GetPayload())
+			log.Printf("Server %d writing %d", s.id, writeRequest.GetPayload())
 		case api.ClientRequest_ReplayRequest:
 
 			for entry := range s.logReader.Read() {

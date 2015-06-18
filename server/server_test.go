@@ -51,8 +51,10 @@ func sendWriteRequest(conn net.Conn, data []byte) {
 	writeRequest := &api.ClientRequest{
 		Type: api.ClientRequest_WriteRequest.Enum(),
 	}
+	count := int64(1)
 	err := proto.SetExtension(writeRequest, api.E_ClientWriteRequest_Request, &api.ClientWriteRequest{
 		Payload: data,
+		Count:   &count,
 	})
 	if err != nil {
 		log.Fatal(err)

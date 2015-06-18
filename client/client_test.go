@@ -42,8 +42,9 @@ func createAndStartServer() *serverTest {
 }
 
 func TestClientCanWriteToServer(t *testing.T) {
-	numClients := 4
-	numServers := 1
+
+	numClients := 2
+	numServers := 2
 
 	addresses := make([]string, numServers)
 	servers := make([]*serverTest, numServers)
@@ -56,7 +57,7 @@ func TestClientCanWriteToServer(t *testing.T) {
 	readChan := make(chan byte)
 	go func() {
 		defer close(readChan)
-		for x := 1; x <= 100; x++ {
+		for x := 1; x <= 10; x++ {
 			readChan <- byte(x)
 		}
 	}()

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"io"
 	"log"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 
@@ -76,11 +75,11 @@ func NewReader(r io.Reader) *LogReader {
 
 }
 
-func (l *LogWriter) Write(payload []byte) (int, error) {
-	timestamp := time.Now().UnixNano()
+func (l *LogWriter) Write(clientId, clientCount int64, payload []byte) (int, error) {
 	l.wChan <- &api.LogEntry{
-		Timestamp: &timestamp,
-		Payload:   payload,
+		ClientId:    &clientId,
+		ClientCount: &clientCount,
+		Payload:     payload,
 	}
 	return 0, nil
 }
