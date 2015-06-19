@@ -1,24 +1,26 @@
-package payload
+package dlog
 
 import (
 	"encoding/binary"
 	"io"
 )
 
-const EOTB = byte(0)
+//EOT (End of transmission)
+var EOT = []byte{0}
 
-var EOT = []byte{EOTB}
-
+//WriteEOT writes the end of transmission signal to the io.writer
 func WriteEOT(w io.Writer) {
 	w.Write(EOT)
 }
 
+//EncodePayload encodes a payload with data length information
 func EncodePayload(data []byte) []byte {
 	dataLen := make([]byte, binary.MaxVarintLen32)
 	numBytes := binary.PutUvarint(dataLen, uint64(len(data)))
 	return append(dataLen[:numBytes], data...)
 }
 
+//DecodePayload decodes a payload encoded with data length information
 func DecodePayload(data []byte) []byte {
 	rawLen, lenSize := binary.Uvarint(data)
 	payloadLen := int(rawLen)
@@ -26,6 +28,7 @@ func DecodePayload(data []byte) []byte {
 	return data[lenSize:offset]
 }
 
+//ScanPayloadSplitFunc is a function intendend for bufio.Scanner's Split function
 func ScanPayloadSplitFunc(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil

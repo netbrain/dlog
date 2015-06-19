@@ -1,21 +1,18 @@
-package client
+package dlog
 
 import (
 	"bytes"
 	"log"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
-
-	"github.com/netbrain/dlog/log"
-	"github.com/netbrain/dlog/server"
 )
 
 type serverTest struct {
-	buffer    *bytes.Buffer
-	logWriter *dlog.LogWriter
-	logReader *dlog.LogReader
-	server    *server.Server
+	buffer *bytes.Buffer
+	logger *Logger
+	server *Server
 }
 
 func TestMain(m *testing.M) {
@@ -25,16 +22,17 @@ func TestMain(m *testing.M) {
 }
 
 func createAndStartServer() *serverTest {
+	var err error
 	buffer := &bytes.Buffer{}
-	lw := dlog.NewWriter(buffer)
-	lr := dlog.NewReader(buffer)
-	server := server.NewServer(lw, lr, 0)
+	if logger, err = NewLogger(""); err != nil {
+		log.Fatal(err)
+	}
+	server := NewServer(logger, 0)
 
 	s := &serverTest{
-		server:    server,
-		buffer:    buffer,
-		logWriter: lw,
-		logReader: lr,
+		server: server,
+		buffer: buffer,
+		logger: logger,
 	}
 	go s.server.Start()
 	log.Printf("Starting TCP server @ %v", s.server.Address())
@@ -43,8 +41,8 @@ func createAndStartServer() *serverTest {
 
 func TestClientCanWriteToServer(t *testing.T) {
 
-	numClients := 2
-	numServers := 2
+	numClients := 4
+	numServers := 10
 
 	addresses := make([]string, numServers)
 	servers := make([]*serverTest, numServers)
@@ -54,13 +52,14 @@ func TestClientCanWriteToServer(t *testing.T) {
 		addresses[x] = s.server.Address().String()
 	}
 
-	readChan := make(chan byte)
-	go func() {
-		defer close(readChan)
-		for x := 1; x <= 10; x++ {
-			readChan <- byte(x)
-		}
-	}()
+	expected := make([]byte, 256)
+	readChan := make(chan byte, 256)
+	for x := 0; x < 256; x++ {
+		expected[x] = byte(x)
+		readChan <- expected[x]
+	}
+	close(readChan)
+
 	wg := &sync.WaitGroup{}
 	for x := 0; x < numClients; x++ {
 		wg.Add(1)
@@ -76,8 +75,12 @@ func TestClientCanWriteToServer(t *testing.T) {
 	wg.Wait()
 
 	readClient := NewClient(addresses)
+	i := 0
 	for data := range readClient.Replay() {
-		log.Println(data)
+		if !reflect.DeepEqual(data[0], expected[i]) {
+			t.Fatalf("%v != %v", data[0], expected[i])
+		}
+		i++
 	}
 
 }

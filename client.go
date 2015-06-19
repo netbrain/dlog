@@ -1,8 +1,7 @@
-package client
+package dlog
 
 import (
 	"bufio"
-	"errors"
 	"io"
 	"log"
 	"math"
@@ -10,26 +9,27 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/golang/protobuf/proto"
-
-	"github.com/netbrain/dlog/api"
-	"github.com/netbrain/dlog/payload"
+	"github.com/netbrain/dlog/model"
 )
 
+//Client is the logging client which handles logwriting
+//and correctly replays log entries
 type Client struct {
+	id          model.UUID
 	connections []net.Conn
 	numClients  uint8
 	current     uint8
 	max         uint8
 	wChan       chan []byte
 	quitChan    chan bool
-	msgCount    int64
+	msgCount    uint64
 }
 
+//NewClient creates a new Client instance
 func NewClient(servers []string) *Client {
 	connections := make([]net.Conn, len(servers))
 	for i, s := range servers {
-		//log.Printf("Connecting to server @ %s", s)
+		log.Printf("Connecting to server @ %s", s)
 		conn, err := net.Dial("tcp", s)
 		if err != nil {
 			log.Fatalf("err connecting to '%s': %s", s, err)
@@ -42,6 +42,7 @@ func NewClient(servers []string) *Client {
 	}
 	numClients := uint8(len(connections))
 	client := &Client{
+		id:          model.NewUUID(),
 		connections: connections,
 		numClients:  numClients,
 		max:         math.MaxUint8 / numClients * numClients,
@@ -66,35 +67,27 @@ func NewClient(servers []string) *Client {
 	return client
 }
 
+//Write adds data to the write queue
 func (c *Client) Write(data []byte) {
 	c.wChan <- data
 }
 
 func (c *Client) write(data []byte) error {
-	msgCount := atomic.AddInt64(&c.msgCount, 1)
-	writeRequest := &api.ClientRequest{
-		Type: api.ClientRequest_WriteRequest.Enum(),
-	}
-	err := proto.SetExtension(writeRequest, api.E_ClientWriteRequest_Request, &api.ClientWriteRequest{
-		Payload: data,
-		Count:   &msgCount,
-	})
-	if err != nil {
-		panic(err)
-	}
-	data, err = proto.Marshal(writeRequest)
-	if err != nil {
-		return err
-	}
+	msgCount := atomic.AddUint64(&c.msgCount, 1)
+
+	md := model.NewMetaData(c.id, msgCount, model.NewUUID()) //TODO  transactionid should be supplied
+	entry := model.NewLogEntry(md, data)
+	request := model.NewWriteRequest(entry)
 
 	conn := c.nexConnection()
-	if _, err := conn.Write(payload.EncodePayload(data)); err != nil {
+	if _, err := conn.Write(EncodePayload(request)); err != nil {
 		return err
 	}
 
 	return nil
 }
 
+//Close closes the client for further reading/writing
 func (c *Client) Close() {
 	c.quitChan <- true
 }
@@ -119,6 +112,7 @@ func (c *Client) nexConnection() net.Conn {
 	return c.connections[c.current%c.numClients]
 }
 
+//Replay replays the servers log entry by entry
 func (c *Client) Replay() <-chan []byte {
 	outChan := make(chan []byte, 100)
 	replayer := c.newReplayStreams()
@@ -133,7 +127,7 @@ func (c *Client) Replay() <-chan []byte {
 			} else if err != nil {
 				log.Fatal(err)
 			}
-			outChan <- entry.GetPayload()
+			outChan <- entry.Payload()
 		}
 	}(outChan)
 	return outChan
@@ -142,11 +136,11 @@ func (c *Client) Replay() <-chan []byte {
 
 type replayStream struct {
 	conn         net.Conn
-	responseChan chan *api.ServerResponse
+	responseChan chan model.LogEntry
 	once         *sync.Once
 }
 
-func (r *replayStream) next() (*api.LogEntry, error) {
+func (r *replayStream) next() (model.LogEntry, error) {
 	r.once.Do(func() {
 		r.sendReplayRequest()
 		go r.readReplayResponse()
@@ -156,60 +150,33 @@ func (r *replayStream) next() (*api.LogEntry, error) {
 	if !open {
 		return nil, io.EOF
 	}
-	if response.GetStatus() == api.ServerResponse_Error {
-		return nil, errors.New(response.GetError())
-	}
-	extension, err := proto.GetExtension(response, api.E_ServerReplayResponse_Response)
-	if err != nil {
-		log.Fatal(err)
-	}
-	replayResponse := extension.(*api.ServerReplayResponse)
 
-	return replayResponse.GetEntry(), nil
+	return response, nil
 }
 
 func newReplayStream(conn net.Conn) *replayStream {
 	r := &replayStream{
 		conn:         conn,
-		responseChan: make(chan *api.ServerResponse),
+		responseChan: make(chan model.LogEntry),
 		once:         &sync.Once{},
 	}
 	return r
 }
 
 func (r *replayStream) sendReplayRequest() error {
-	replayRequest := &api.ClientRequest{
-		Type: api.ClientRequest_ReplayRequest.Enum(),
-	}
-	err := proto.SetExtension(replayRequest, api.E_ClientReplayRequest_Request, &api.ClientReplayRequest{})
-	if err != nil {
-		return err
-	}
-	data, err := proto.Marshal(replayRequest)
-	if err != nil {
-		return err
-	}
-
-	data = payload.EncodePayload(data)
-	if _, err := r.conn.Write(data); err != nil {
-		return err
-	}
-
-	return nil
+	request := model.NewReplayRequest()
+	_, err := r.conn.Write(EncodePayload(request))
+	return err
 }
 
 func (r *replayStream) readReplayResponse() {
 	defer close(r.responseChan)
 
 	scanner := bufio.NewScanner(r.conn)
-	scanner.Split(payload.ScanPayloadSplitFunc)
+	scanner.Split(ScanPayloadSplitFunc)
 
 	for scanner.Scan() {
-		response := &api.ServerResponse{}
-		if err := proto.Unmarshal(scanner.Bytes(), response); err != nil {
-			log.Fatal(err)
-		}
-		r.responseChan <- response
+		r.responseChan <- model.LogEntry(scanner.Bytes())
 	}
 
 	if scanner.Err() != nil {
@@ -219,7 +186,7 @@ func (r *replayStream) readReplayResponse() {
 
 type replayStreams struct {
 	streams []*replayStream
-	entries map[int]*api.LogEntry
+	entries map[int]model.LogEntry
 }
 
 func (c *Client) newReplayStreams() *replayStreams {
@@ -232,11 +199,11 @@ func (c *Client) newReplayStreams() *replayStreams {
 	}
 }
 
-func (r *replayStreams) next() (*api.LogEntry, error) {
+func (r *replayStreams) next() (model.LogEntry, error) {
 	entryIndex := -1
 
 	if r.entries == nil {
-		r.entries = make(map[int]*api.LogEntry)
+		r.entries = make(map[int]model.LogEntry)
 
 		for i, stream := range r.streams {
 			e, err := stream.next()
@@ -253,7 +220,7 @@ func (r *replayStreams) next() (*api.LogEntry, error) {
 			continue
 		} else if entryIndex == -1 {
 			entryIndex = i
-		} else if e.GetClientCount() < r.entries[entryIndex].GetClientCount() {
+		} else if e.MetaData().ClientMessageNumber() < r.entries[entryIndex].MetaData().ClientMessageNumber() {
 			entryIndex = i
 		}
 	}

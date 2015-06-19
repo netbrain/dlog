@@ -1,4 +1,4 @@
-package payload
+package dlog
 
 import (
 	"bufio"
