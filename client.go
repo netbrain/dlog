@@ -29,7 +29,6 @@ type Client struct {
 func NewClient(servers []string) *Client {
 	connections := make([]net.Conn, len(servers))
 	for i, s := range servers {
-		log.Printf("Connecting to server @ %s", s)
 		conn, err := net.Dial("tcp", s)
 		if err != nil {
 			log.Fatalf("err connecting to '%s': %s", s, err)
@@ -72,6 +71,58 @@ func (c *Client) Write(data []byte) {
 	c.wChan <- data
 }
 
+//Replay replays the servers log entry by entry
+func (c *Client) Replay() <-chan []byte {
+	outChan := make(chan []byte, 100)
+	replayer := c.newReplayStreams()
+
+	go func(outChan chan<- []byte) {
+		defer close(outChan)
+		for {
+			entry, err := replayer.next()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				log.Fatal(err)
+			}
+			outChan <- entry.Payload()
+		}
+	}(outChan)
+	return outChan
+
+}
+
+//SubscriptionClient creates a new Client which starts a subscribe call
+func (c *Client) SubscriptionClient() (*Client, <-chan model.LogEntry) {
+	servers := make([]string, len(c.connections))
+	for i, conn := range c.connections {
+		servers[i] = conn.RemoteAddr().String()
+	}
+	//TODO should this be in its own SubscriptionClient?
+	c = NewClient(servers)
+	return c, c.subscribe()
+}
+
+func (c *Client) subscribe() <-chan model.LogEntry {
+	subscribeChan := make(chan model.LogEntry)
+
+	go func(chan<- model.LogEntry) {
+		for _, conn := range c.connections {
+			req := model.NewSubscribeRequest()
+			if _, err := conn.Write(EncodePayload(req)); err != nil {
+				log.Fatal(err)
+			}
+			//TODO replace with worker channel
+			go c.connectionSubscriptionListenRoutine(conn, subscribeChan)
+		}
+	}(subscribeChan)
+	return subscribeChan
+}
+
+func (c *Client) connectionSubscriptionListenRoutine(conn net.Conn, subscribeChan chan<- model.LogEntry) {
+	writeLogEntryToChan(subscribeChan, conn)
+}
+
 func (c *Client) write(data []byte) error {
 	msgCount := atomic.AddUint64(&c.msgCount, 1)
 
@@ -112,28 +163,6 @@ func (c *Client) nexConnection() net.Conn {
 	return c.connections[c.current%c.numClients]
 }
 
-//Replay replays the servers log entry by entry
-func (c *Client) Replay() <-chan []byte {
-	outChan := make(chan []byte, 100)
-	replayer := c.newReplayStreams()
-
-	go func(outChan chan<- []byte) {
-		defer close(outChan)
-		for {
-			entry, err := replayer.next()
-			if err == io.EOF {
-				log.Printf("Nothing left to replay, EOF")
-				break
-			} else if err != nil {
-				log.Fatal(err)
-			}
-			outChan <- entry.Payload()
-		}
-	}(outChan)
-	return outChan
-
-}
-
 type replayStream struct {
 	conn         net.Conn
 	responseChan chan model.LogEntry
@@ -170,18 +199,7 @@ func (r *replayStream) sendReplayRequest() error {
 }
 
 func (r *replayStream) readReplayResponse() {
-	defer close(r.responseChan)
-
-	scanner := bufio.NewScanner(r.conn)
-	scanner.Split(ScanPayloadSplitFunc)
-
-	for scanner.Scan() {
-		r.responseChan <- model.LogEntry(scanner.Bytes())
-	}
-
-	if scanner.Err() != nil {
-		log.Fatal(scanner.Err())
-	}
+	writeLogEntryToChan(r.responseChan, r.conn)
 }
 
 type replayStreams struct {
@@ -239,4 +257,19 @@ func (r *replayStreams) next() (model.LogEntry, error) {
 
 	return entry, nil
 
+}
+
+func writeLogEntryToChan(ch chan<- model.LogEntry, conn net.Conn) {
+	defer close(ch)
+
+	scanner := bufio.NewScanner(conn)
+	scanner.Split(ScanPayloadSplitFunc)
+
+	for scanner.Scan() {
+		ch <- scanner.Bytes()
+	}
+
+	if scanner.Err() != nil {
+		log.Fatal(scanner.Err())
+	}
 }

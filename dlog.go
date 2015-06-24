@@ -83,9 +83,7 @@ func (l *Logger) Read() <-chan model.LogEntry {
 			c <- entry
 		}
 		err = scanner.Err()
-		if err == io.ErrUnexpectedEOF {
-			log.Printf("%v: may occur if writer is still open", err)
-		} else if err != nil {
+		if err != nil && err != io.ErrUnexpectedEOF {
 			log.Fatal(err)
 		}
 	}(c)
@@ -99,18 +97,17 @@ func (l *Logger) writeRoutine(w io.Writer) {
 
 	if closer, ok := w.(io.Closer); ok {
 		if err := closer.Close(); err != nil {
-			log.Println(err)
+			log.Fatal(err)
 		}
 	}
 
 	if err := l.wFile.Close(); err != nil {
-		log.Println(err)
+		log.Fatal(err)
 	}
 }
 
 func (l *Logger) writeEntry(w io.Writer, entry model.LogEntry) {
 	if entry == nil {
-		log.Println("Cannot write nil value")
 		return
 	}
 	if _, err := w.Write(EncodePayload(entry)); err != nil {
@@ -119,7 +116,7 @@ func (l *Logger) writeEntry(w io.Writer, entry model.LogEntry) {
 
 	if flusher, ok := w.(model.Flusher); ok {
 		if err := flusher.Flush(); err != nil {
-			log.Println(err)
+			log.Fatal(err)
 		}
 	}
 

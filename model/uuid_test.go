@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	. "./testdata"
 )
 
 func TestCreateUUID(t *testing.T) {

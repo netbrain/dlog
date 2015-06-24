@@ -7,6 +7,9 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/netbrain/dlog/model"
 )
 
 type serverTest struct {
@@ -35,8 +38,40 @@ func createAndStartServer() *serverTest {
 		logger: logger,
 	}
 	go s.server.Start()
-	log.Printf("Starting TCP server @ %v", s.server.Address())
 	return s
+}
+
+func TestClientCanSubscribeToServer(t *testing.T) {
+	numServers := 2
+	addresses := make([]string, numServers)
+	servers := make([]*serverTest, numServers)
+	for x := 0; x < numServers; x++ {
+		s := createAndStartServer()
+		servers[x] = s
+		addresses[x] = s.server.Address().String()
+	}
+	payload := []byte{1, 2, 3}
+
+	client := NewClient(addresses)
+	_, subscription := client.SubscriptionClient()
+	time.Sleep(time.Second) //Todo have no idea why i need to sleep
+	client.Write(payload)
+
+	var logEntry model.LogEntry
+	select {
+	case logEntry = <-subscription:
+	case <-time.After(time.Millisecond * 200):
+		t.Fatal("Timed out")
+	}
+
+	if logEntry == nil {
+		t.Fatal("no logentry received")
+	}
+
+	if !reflect.DeepEqual(logEntry.Payload(), payload) {
+		t.Fatal("not equal")
+	}
+
 }
 
 func TestClientCanWriteToServer(t *testing.T) {
