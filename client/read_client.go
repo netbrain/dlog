@@ -56,15 +56,10 @@ func (r *ReadClient) Subscribe() <-chan model.LogEntry {
 			if _, err := conn.Write(encoder.EncodePayload(req)); err != nil {
 				log.Fatal(err)
 			}
-			//TODO replace with worker channel
-			go r.connectionSubscriptionListenRoutine(conn, subscribeChan)
+			go writeLogEntryToChan(subscribeChan, conn)
 		}
 	}(subscribeChan)
 	return subscribeChan
-}
-
-func (r *ReadClient) connectionSubscriptionListenRoutine(conn net.Conn, subscribeChan chan<- model.LogEntry) {
-	writeLogEntryToChan(subscribeChan, conn)
 }
 
 //Close closes the client for further reading
