@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"sync"
 
 	"github.com/netbrain/dlog/encoder"
 	"github.com/netbrain/dlog/model"
@@ -71,26 +70,6 @@ func (r *ReadClient) connectionSubscriptionListenRoutine(conn net.Conn, subscrib
 //Close closes the client for further reading
 func (r *ReadClient) Close() {
 	r.connectionPool.Close()
-}
-
-type replayStream struct {
-	conn         net.Conn
-	responseChan chan model.LogEntry
-	once         *sync.Once
-}
-
-func (r *replayStream) next() (model.LogEntry, error) {
-	r.once.Do(func() {
-		r.sendReplayRequest()
-		go r.readReplayResponse()
-	})
-
-	response, open := <-r.responseChan
-	if !open {
-		return nil, io.EOF
-	}
-
-	return response, nil
 }
 
 func writeLogEntryToChan(ch chan<- model.LogEntry, conn net.Conn) {
