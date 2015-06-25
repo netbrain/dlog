@@ -1,7 +1,6 @@
-package dlog
+package client
 
 import (
-	"bytes"
 	"log"
 	"os"
 	"reflect"
@@ -9,13 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netbrain/dlog"
 	"github.com/netbrain/dlog/model"
 )
 
 type serverTest struct {
-	buffer *bytes.Buffer
-	logger *Logger
-	server *Server
+	logger *dlog.Logger
+	server *dlog.Server
 }
 
 func TestMain(m *testing.M) {
@@ -26,15 +25,15 @@ func TestMain(m *testing.M) {
 
 func createAndStartServer() *serverTest {
 	var err error
-	buffer := &bytes.Buffer{}
-	if logger, err = NewLogger(""); err != nil {
+	var logger *dlog.Logger
+
+	if logger, err = dlog.NewLogger(""); err != nil {
 		log.Fatal(err)
 	}
-	server := NewServer(logger, 0)
+	server := dlog.NewServer(logger, 0)
 
 	s := &serverTest{
 		server: server,
-		buffer: buffer,
 		logger: logger,
 	}
 	go s.server.Start()
@@ -52,11 +51,11 @@ func TestClientCanSubscribeToServer(t *testing.T) {
 	}
 	payload := []byte{1, 2, 3}
 
-	client := NewClient(addresses)
-	_, subscription := client.SubscriptionClient()
+	writeClient := NewWriteClient(addresses)
+	readClient := NewReadClient(addresses)
+	subscription := readClient.Subscribe()
 	time.Sleep(time.Second) //Todo have no idea why i need to sleep
-	client.Write(payload)
-
+	writeClient.Write(payload)
 	var logEntry model.LogEntry
 	select {
 	case logEntry = <-subscription:
@@ -74,7 +73,7 @@ func TestClientCanSubscribeToServer(t *testing.T) {
 
 }
 
-func TestClientCanWriteToServer(t *testing.T) {
+func TestClientCanWriteAndReplay(t *testing.T) {
 
 	numClients := 4
 	numServers := 10
@@ -98,8 +97,8 @@ func TestClientCanWriteToServer(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	for x := 0; x < numClients; x++ {
 		wg.Add(1)
-		client := NewClient(addresses)
-		go func(client *Client) {
+		client := NewWriteClient(addresses)
+		go func(client *WriteClient) {
 			defer client.Close()
 			defer wg.Done()
 			for b := range readChan {
@@ -109,7 +108,7 @@ func TestClientCanWriteToServer(t *testing.T) {
 	}
 	wg.Wait()
 
-	readClient := NewClient(addresses)
+	readClient := NewReadClient(addresses)
 	i := 0
 	for data := range readClient.Replay() {
 		if !reflect.DeepEqual(data[0], expected[i]) {

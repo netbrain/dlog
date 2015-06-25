@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 
+	. "github.com/netbrain/dlog/encoder"
+
 	"github.com/netbrain/dlog/model"
 )
 

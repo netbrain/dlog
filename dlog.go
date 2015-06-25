@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	. "github.com/netbrain/dlog/encoder"
 	"github.com/netbrain/dlog/model"
 )
 

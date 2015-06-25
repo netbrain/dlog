@@ -13,11 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/netbrain/dlog"
+	"github.com/netbrain/dlog/client"
 )
 
 var hostsList string
 var numWrites int
+var servers []string
 
 func init() {
 	flag.StringVar(&hostsList, "hosts", "localhost:1234", "comma separated list of hosts to connect to")
@@ -28,24 +29,25 @@ func main() {
 	flag.PrintDefaults()
 	flag.Parse()
 
-	servers := strings.Split(hostsList, ",")
-	c := dlog.NewClient(servers)
-	defer c.Close()
+	servers = strings.Split(hostsList, ",")
 
-	writeBench(c)
+	writeBench()
 	time.Sleep(time.Second)
-	readBench(c)
+	readBench()
 
 }
 
-func writeBench(client *dlog.Client) {
+func writeBench() {
 	payload := make([]byte, 1024)
 	rand.Read(payload)
+
+	c := client.NewWriteClient(servers)
+	defer c.Close()
 
 	fmt.Println("\n Starting write benchmark")
 	start := time.Now()
 	for x := numWrites; x > 0; x-- {
-		client.Write(payload)
+		c.Write(payload)
 	}
 	elapsed := time.Since(start)
 
@@ -54,11 +56,14 @@ func writeBench(client *dlog.Client) {
 
 }
 
-func readBench(client *dlog.Client) {
+func readBench() {
+	c := client.NewReadClient(servers)
+	defer c.Close()
+
 	fmt.Println("\n Starting read benchmark")
 
 	start := time.Now()
-	replayChan := client.Replay()
+	replayChan := c.Replay()
 	numReads := 0
 	for range replayChan {
 		numReads++

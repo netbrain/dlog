@@ -1,4 +1,4 @@
-package dlog
+package encoder
 
 import (
 	"encoding/binary"

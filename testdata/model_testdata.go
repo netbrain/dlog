@@ -1,10 +1,10 @@
-// +build ignore
-
-package model
+package testdata
 
 import (
 	"log"
 	"math/rand"
+
+	. "github.com/netbrain/dlog/model"
 )
 
 type MetaDataTestData struct {

@@ -5,9 +5,7 @@ import (
 )
 
 func TestCanCreateReplayRequest(t *testing.T) {
-	req := NewRequestTestData().
-		WithType(TypeReplayRequest).
-		Build()
+	req := NewReplayRequest()
 	if req.Type() != TypeReplayRequest {
 		t.Fatal("Unexpected type")
 	}
@@ -15,8 +13,15 @@ func TestCanCreateReplayRequest(t *testing.T) {
 }
 
 func TestCanCreateWriteRequest(t *testing.T) {
-	req := NewRequestTestData().Build()
+	req := NewWriteRequest(nil)
 	if req.Type() != TypeWriteRequest {
+		t.Fatal("Unexpected type")
+	}
+}
+
+func TestCanCreateSubscribeRequest(t *testing.T) {
+	req := NewSubscribeRequest()
+	if req.Type() != TypeSubscribeRequest {
 		t.Fatal("Unexpected type")
 	}
 }

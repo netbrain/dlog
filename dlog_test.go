@@ -11,16 +11,16 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/netbrain/dlog/model"
-
 	"testing"
+
+	. "github.com/netbrain/dlog/testdata"
 )
 
 func TestCanWriteAndReadEntry(t *testing.T) {
 	payload := []byte{1, 2, 3}
 	logger, _ := NewLogger("")
 
-	logEntry := model.NewLogEntryTestData().
+	logEntry := NewLogEntryTestData().
 		WithPayload(payload).
 		Build()
 
@@ -38,7 +38,7 @@ func TestCanReadEntries(t *testing.T) {
 	payload := []byte{1, 2, 3}
 	logger, _ := NewLogger("")
 	for x := 0; x < 10; x++ {
-		logger.Write(model.NewLogEntryTestData().Build())
+		logger.Write(NewLogEntryTestData().Build())
 	}
 	c := logger.Read()
 	numElems := 0
@@ -72,7 +72,7 @@ func benchmarkWrite(b *testing.B, w io.Writer) {
 	logger, _ := NewLogger("")
 	defer logger.Close()
 
-	logEntry := model.NewLogEntryTestData().
+	logEntry := NewLogEntryTestData().
 		WithPayload(payload).
 		Build()
 
