@@ -1,7 +1,7 @@
 package model
 
 import (
-	fb "github.com/netbrain/dlog/vendor/flatbuffers"
+	fb "github.com/netbrain/dlog/_vendor/flatbuffers"
 )
 
 /*
