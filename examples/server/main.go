@@ -1,5 +1,5 @@
 /*
-A simple command line utility to start a dlog server with profiling
+A simple command line utility to start a dlog server
 
 Example usage
 	./server -port=1234 -dir=/tmp

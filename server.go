@@ -6,22 +6,28 @@ import (
 	"log"
 	"net"
 
+	. "github.com/netbrain/dlog/encoder"
+
 	"github.com/netbrain/dlog/model"
 )
 
 //Server handles the server side functionality
 type Server struct {
-	listener net.Listener
-	logger   *Logger
-	closed   bool
-	port     int
+	listener      net.Listener
+	subscribeChan chan net.Conn
+	subscribers   []net.Conn
+	logger        *Logger
+	closed        bool
+	port          int
 }
 
 //NewServer creates a new Server instance
 func NewServer(logger *Logger, port int) *Server {
 	s := &Server{
-		logger: logger,
-		port:   port,
+		logger:        logger,
+		port:          port,
+		subscribeChan: make(chan net.Conn),
+		subscribers:   make([]net.Conn, 0),
 	}
 	l, e := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if e != nil {
@@ -29,6 +35,7 @@ func NewServer(logger *Logger, port int) *Server {
 	}
 
 	s.listener = l
+	go s.subscriptionRoutine()
 	return s
 }
 
@@ -38,12 +45,10 @@ func (s *Server) Start() {
 }
 
 func (s *Server) listen() {
-	//log.Printf("Listening on %s", s.listener.Addr())
 	for {
 		conn, err := s.listener.Accept()
 
 		if s.closed {
-			//log.Println("Server closed")
 			break
 		}
 
@@ -51,7 +56,6 @@ func (s *Server) listen() {
 			log.Fatal(err)
 		}
 
-		//log.Printf("Accepted connection from %v", conn.RemoteAddr())
 		if err != nil {
 			log.Fatalf("Error when accepting connection: %s", err)
 		}
@@ -68,17 +72,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 		request := model.Request(scanner.Bytes())
 		switch request.Type() {
 		case model.TypeWriteRequest:
-			logEntry, err := request.LogEntry()
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			s.logger.Write(logEntry)
+			s.write(request)
 		case model.TypeReplayRequest:
-			for logEntry := range s.logger.Read() {
-				conn.Write(EncodePayload(logEntry))
-			}
-			WriteEOT(conn)
+			s.replay(conn)
+		case model.TypeSubscribeRequest:
+			s.subscribe(conn)
 		default:
 			log.Fatalf("Unknown request type: %b", request.Type())
 		}
@@ -90,8 +88,46 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 }
 
+func (s *Server) write(request model.Request) {
+	logEntry, err := request.LogEntry()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	s.logger.Write(logEntry)
+	s.notify(logEntry)
+}
+
+func (s *Server) replay(conn net.Conn) {
+	for logEntry := range s.logger.Read() {
+		conn.Write(EncodePayload(logEntry))
+	}
+	WriteEOT(conn)
+}
+
+func (s *Server) subscriptionRoutine() {
+	for subscriber := range s.subscribeChan {
+		s.subscribers = append(s.subscribers, subscriber)
+	}
+}
+
+func (s *Server) subscribe(conn net.Conn) {
+	s.subscribeChan <- conn
+	select {} //block forever
+}
+
+func (s *Server) notify(logEntries ...model.LogEntry) {
+	for _, conn := range s.subscribers {
+		for _, logEntry := range logEntries {
+			conn.Write(EncodePayload(logEntry))
+		}
+		WriteEOT(conn)
+	}
+}
+
 //Stop stops the server
 func (s *Server) Stop() {
+	close(s.subscribeChan)
 	s.listener.Close()
 	s.closed = true
 }

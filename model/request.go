@@ -3,14 +3,16 @@ package model
 import (
 	"errors"
 
-	fb "github.com/netbrain/dlog/vendor/flatbuffers"
+	fb "github.com/netbrain/dlog/_vendor/flatbuffers"
 )
 
 const (
 	//TypeWriteRequest is a flag which signals a write request
 	TypeWriteRequest = 1<<iota - 1
-	//TypeReplayRequest is a flag that signast a replay request
+	//TypeReplayRequest is a flag that signals a replay request
 	TypeReplayRequest
+	//TypeSubscribeRequest is a flag that signalst a subscription request
+	TypeSubscribeRequest
 )
 
 /*
@@ -37,6 +39,13 @@ func NewWriteRequest(logEntry LogEntry) Request {
 	req := make(Request, 1)
 	fb.WriteByte(req, TypeWriteRequest)
 	return append(req, logEntry...)
+}
+
+//NewSubscribeRequest creates a new subscription request
+func NewSubscribeRequest() Request {
+	req := make(Request, 1)
+	fb.WriteByte(req, TypeSubscribeRequest)
+	return req
 }
 
 //Type returns the type this reques is,

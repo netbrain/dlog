@@ -8,6 +8,9 @@ import (
 
 	"github.com/netbrain/dlog/model"
 
+	"github.com/netbrain/dlog/encoder"
+	. "github.com/netbrain/dlog/testdata"
+
 	"testing"
 )
 
@@ -38,22 +41,21 @@ func dial() net.Conn {
 }
 
 func sendWriteRequest(conn net.Conn, data []byte) {
-	request := model.NewRequestTestData().
+	request := NewRequestTestData().
 		WithLogEntry(
-		model.NewLogEntryTestData().
+		NewLogEntryTestData().
 			WithPayload(data).
 			Build()).
 		Build()
-	data = EncodePayload(request)
+	data = encoder.EncodePayload(request)
 	conn.Write(data)
 }
 
 func sendReplayRequest(conn net.Conn) {
-	request := model.
-		NewRequestTestData().
+	request := NewRequestTestData().
 		WithType(model.TypeReplayRequest).
 		Build()
-	data := EncodePayload(request)
+	data := encoder.EncodePayload(request)
 	conn.Write(data)
 }
 
@@ -78,7 +80,7 @@ func TestCanSendReplayRequest(t *testing.T) {
 	sendReplayRequest(conn)
 
 	scanner := bufio.NewScanner(conn)
-	scanner.Split(ScanPayloadSplitFunc)
+	scanner.Split(encoder.ScanPayloadSplitFunc)
 	actual := 0
 	for scanner.Scan() {
 		logEntry := model.LogEntry(scanner.Bytes())
