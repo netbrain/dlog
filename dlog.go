@@ -58,7 +58,6 @@ func (l *Logger) Write(logEntry model.LogEntry) {
 func (l *Logger) Close() {
 	close(l.wChan)
 	l.wg.Wait()
-
 }
 
 //Read returns a channel which logentries are appended to
