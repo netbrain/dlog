@@ -76,7 +76,7 @@ func TestCanSendReplayRequest(t *testing.T) {
 	for x := 0; x < expected; x++ {
 		sendWriteRequest(conn, []byte{byte(x)})
 	}
-
+	logger.Close()
 	sendReplayRequest(conn)
 
 	scanner := bufio.NewScanner(conn)

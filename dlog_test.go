@@ -40,6 +40,8 @@ func TestCanReadEntries(t *testing.T) {
 	for x := 0; x < 10; x++ {
 		logger.Write(NewLogEntryTestData().Build())
 	}
+	logger.Close()
+
 	c := logger.Read()
 	numElems := 0
 	for entry := range c {
