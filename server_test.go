@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"log"
 	"net"
+	"time"
 
 	"github.com/netbrain/dlog/model"
 
@@ -76,7 +77,7 @@ func TestCanSendReplayRequest(t *testing.T) {
 	for x := 0; x < expected; x++ {
 		sendWriteRequest(conn, []byte{byte(x)})
 	}
-	logger.Close()
+	time.Sleep(time.Second)
 	sendReplayRequest(conn)
 
 	scanner := bufio.NewScanner(conn)
