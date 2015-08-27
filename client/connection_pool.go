@@ -4,8 +4,6 @@ import (
 	"log"
 	"math"
 	"net"
-
-	"github.com/netbrain/dlog/_vendor/goautosocket"
 )
 
 //RoundRobinConnectionPool holds a number of connections and data needed for round robin mechanics
@@ -20,7 +18,7 @@ type RoundRobinConnectionPool struct {
 func NewRoundRobinConnectionPool(servers []string) *RoundRobinConnectionPool {
 	connections := make([]net.Conn, len(servers))
 	for i, s := range servers {
-		conn, err := gas.Dial("tcp", s)
+		conn, err := net.Dial("tcp", s)
 		if err != nil {
 			log.Fatalf("err connecting to '%s': %s", s, err)
 		}

@@ -3,7 +3,7 @@ package model
 import (
 	"errors"
 
-	fb "github.com/netbrain/dlog/_vendor/flatbuffers"
+	fb "github.com/google/flatbuffers/go"
 )
 
 const (
