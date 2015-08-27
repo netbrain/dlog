@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"time"
 
-	fb "github.com/netbrain/dlog/_vendor/flatbuffers"
+	fb "github.com/google/flatbuffers/go"
 )
 
 //UUID represents a unique id where the first 4 bytes is the timestamp
