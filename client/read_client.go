@@ -74,7 +74,7 @@ func writeLogEntryToChan(ch chan<- model.LogEntry, conn net.Conn) {
 	scanner.Split(encoder.ScanPayloadSplitFunc)
 
 	for scanner.Scan() {
-		ch <- scanner.Bytes()
+		ch <- append(scanner.Bytes())
 	}
 
 	if scanner.Err() != nil {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
+	"sync/atomic"
 
 	. "github.com/netbrain/dlog/encoder"
 
@@ -13,22 +15,33 @@ import (
 
 //Server handles the server side functionality
 type Server struct {
-	listener      net.Listener
-	subscribeChan chan net.Conn
-	subscribers   []net.Conn
-	logger        *Logger
-	closed        bool
-	port          int
+	listener    net.Listener
+	subscribers struct {
+		subChan chan net.Conn
+		conns   []net.Conn
+		lock    sync.Mutex
+	}
+	logger *Logger
+	closed atomic.Value
+	port   int
 }
 
 //NewServer creates a new Server instance
 func NewServer(logger *Logger, port int) *Server {
 	s := &Server{
-		logger:        logger,
-		port:          port,
-		subscribeChan: make(chan net.Conn),
-		subscribers:   make([]net.Conn, 0),
+		logger: logger,
+		port:   port,
+		subscribers: struct {
+			subChan chan net.Conn
+			conns   []net.Conn
+			lock    sync.Mutex
+		}{
+			subChan: make(chan net.Conn),
+			conns:   make([]net.Conn, 0),
+		},
 	}
+	s.closed.Store(false)
+
 	l, e := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if e != nil {
 		log.Fatal("listen error:", e)
@@ -48,7 +61,7 @@ func (s *Server) listen() {
 	for {
 		conn, err := s.listener.Accept()
 
-		if s.closed {
+		if s.closed.Load().(bool) {
 			break
 		}
 
@@ -69,7 +82,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 	scanner.Split(ScanPayloadSplitFunc)
 
 	for scanner.Scan() {
-		request := model.Request(scanner.Bytes())
+		request := model.Request(make([]byte, len(scanner.Bytes())))
+		copy(request, scanner.Bytes())
 		switch request.Type() {
 		case model.TypeWriteRequest:
 			s.write(request)
@@ -106,18 +120,27 @@ func (s *Server) replay(conn net.Conn) {
 }
 
 func (s *Server) subscriptionRoutine() {
-	for subscriber := range s.subscribeChan {
-		s.subscribers = append(s.subscribers, subscriber)
+	for subscriber := range s.subscribers.subChan {
+		s.addSubscriber(subscriber)
 	}
 }
 
+func (s *Server) addSubscriber(subscriber net.Conn) {
+	s.subscribers.lock.Lock()
+	defer s.subscribers.lock.Unlock()
+	s.subscribers.conns = append(s.subscribers.conns, subscriber)
+}
+
 func (s *Server) subscribe(conn net.Conn) {
-	s.subscribeChan <- conn
+	s.subscribers.subChan <- conn
 	select {} //block forever
 }
 
 func (s *Server) notify(logEntries ...model.LogEntry) {
-	for _, conn := range s.subscribers {
+	s.subscribers.lock.Lock()
+	defer s.subscribers.lock.Unlock()
+
+	for _, conn := range s.subscribers.conns {
 		for _, logEntry := range logEntries {
 			conn.Write(EncodePayload(logEntry))
 		}
@@ -127,9 +150,9 @@ func (s *Server) notify(logEntries ...model.LogEntry) {
 
 //Stop stops the server
 func (s *Server) Stop() {
-	close(s.subscribeChan)
+	close(s.subscribers.subChan)
 	s.listener.Close()
-	s.closed = true
+	s.closed.Store(true)
 }
 
 //Address returns the servers address the server is listening on
