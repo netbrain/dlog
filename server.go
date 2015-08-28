@@ -17,9 +17,9 @@ import (
 type Server struct {
 	listener    net.Listener
 	subscribers struct {
+		sync.Mutex
 		subChan chan net.Conn
 		conns   []net.Conn
-		lock    sync.Mutex
 	}
 	logger *Logger
 	closed atomic.Value
@@ -32,9 +32,9 @@ func NewServer(logger *Logger, port int) *Server {
 		logger: logger,
 		port:   port,
 		subscribers: struct {
+			sync.Mutex
 			subChan chan net.Conn
 			conns   []net.Conn
-			lock    sync.Mutex
 		}{
 			subChan: make(chan net.Conn),
 			conns:   make([]net.Conn, 0),
@@ -126,8 +126,8 @@ func (s *Server) subscriptionRoutine() {
 }
 
 func (s *Server) addSubscriber(subscriber net.Conn) {
-	s.subscribers.lock.Lock()
-	defer s.subscribers.lock.Unlock()
+	s.subscribers.Lock()
+	defer s.subscribers.Unlock()
 	s.subscribers.conns = append(s.subscribers.conns, subscriber)
 }
 
@@ -137,8 +137,8 @@ func (s *Server) subscribe(conn net.Conn) {
 }
 
 func (s *Server) notify(logEntries ...model.LogEntry) {
-	s.subscribers.lock.Lock()
-	defer s.subscribers.lock.Unlock()
+	s.subscribers.Lock()
+	defer s.subscribers.Unlock()
 
 	for _, conn := range s.subscribers.conns {
 		for _, logEntry := range logEntries {
