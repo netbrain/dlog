@@ -34,7 +34,7 @@ func NewLogger(directory string) (*Logger, error) {
 
 	wFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 	w, _ := flate.NewWriter(wFile, flate.BestCompression)
 
@@ -69,7 +69,7 @@ func (l *Logger) Read() <-chan model.LogEntry {
 		defer close(c)
 		rFile, err := os.OpenFile(l.wFile.Name(), os.O_RDONLY, 0644)
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 		defer rFile.Close()
 
@@ -84,7 +84,7 @@ func (l *Logger) Read() <-chan model.LogEntry {
 		}
 		err = scanner.Err()
 		if err != nil && err != io.ErrUnexpectedEOF {
-			log.Fatal(err)
+			log.Println(err)
 		}
 	}(c)
 	return c
@@ -97,12 +97,12 @@ func (l *Logger) writeRoutine(w io.Writer) {
 
 	if closer, ok := w.(io.Closer); ok {
 		if err := closer.Close(); err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 	}
 
 	if err := l.wFile.Close(); err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 }
 
@@ -111,12 +111,12 @@ func (l *Logger) writeEntry(w io.Writer, entry model.LogEntry) {
 		return
 	}
 	if _, err := w.Write(EncodePayload(entry)); err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	if flusher, ok := w.(model.Flusher); ok {
 		if err := flusher.Flush(); err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 	}
 

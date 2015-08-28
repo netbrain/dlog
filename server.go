@@ -44,7 +44,7 @@ func NewServer(logger *Logger, port int) *Server {
 
 	l, e := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if e != nil {
-		log.Fatal("listen error:", e)
+		log.Println("listen error:", e)
 	}
 
 	s.listener = l
@@ -66,11 +66,7 @@ func (s *Server) listen() {
 		}
 
 		if err != nil {
-			log.Fatal(err)
-		}
-
-		if err != nil {
-			log.Fatalf("Error when accepting connection: %s", err)
+			log.Printf("Error when accepting connection: %s", err)
 		}
 		go s.handleConnection(conn)
 	}
@@ -92,12 +88,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 		case model.TypeSubscribeRequest:
 			s.subscribe(conn)
 		default:
-			log.Fatalf("Unknown request type: %b", request.Type())
+			log.Printf("Unknown request type: %b", request.Type())
 		}
 	}
 
 	if scanner.Err() != nil {
-		log.Fatal(scanner.Err())
+		log.Println(scanner.Err())
 	}
 
 }
@@ -105,7 +101,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 func (s *Server) write(request model.Request) {
 	logEntry, err := request.LogEntry()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	s.logger.Write(logEntry)
@@ -121,14 +117,10 @@ func (s *Server) replay(conn net.Conn) {
 
 func (s *Server) subscriptionRoutine() {
 	for subscriber := range s.subscribers.subChan {
-		s.addSubscriber(subscriber)
+		s.subscribers.Lock()
+		s.subscribers.conns = append(s.subscribers.conns, subscriber)
+		s.subscribers.Unlock()
 	}
-}
-
-func (s *Server) addSubscriber(subscriber net.Conn) {
-	s.subscribers.Lock()
-	defer s.subscribers.Unlock()
-	s.subscribers.conns = append(s.subscribers.conns, subscriber)
 }
 
 func (s *Server) subscribe(conn net.Conn) {
